@@ -1,4 +1,6 @@
-﻿## [1.7.2] - 2026-09-25
+﻿## [1.8.0] - ???
+
+## [1.7.2] - 2026-09-25
 
 ### Fixed
 - Added `ILayoutElement` max width/height properties in Unity 6.6+ - shoutout @IbrahimOezhan
