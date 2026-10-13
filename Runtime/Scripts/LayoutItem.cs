@@ -108,6 +108,9 @@ namespace Poke.UI
         public SizeModes Sizing => m_sizing;
         #endregion
         
+        // a plain item has nothing to fit; a Layout fits its children
+        protected virtual bool FitsItsContent => false;
+        
         protected RectTransform _rect;
         protected DrivenRectTransformTracker _tracker;
         protected DrivenTransformProperties _trackerProps;
@@ -217,9 +220,6 @@ namespace Poke.UI
             if(_parent && !m_ignoreLayout) 
                 _trackerProps |= DrivenTransformProperties.AnchoredPosition | DrivenTransformProperties.Anchors;
         }
-
-        // a plain item has nothing to fit; a Layout fits its children
-        protected virtual bool FitsItsContent => false;
 
         public virtual void SetDirty() {
             _dirty = true;

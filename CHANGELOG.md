@@ -1,5 +1,10 @@
 ﻿## [1.8.0] - ???
 
+### Fixed
+- @fabianboth - Fixed `LayoutItem` setting driven `RectTransform` properties incorrectly in specific cases
+
+### Changed
+
 ## [1.7.2] - 2026-09-25
 
 ### Fixed

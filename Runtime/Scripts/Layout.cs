@@ -127,6 +127,8 @@ namespace Poke.UI
         public int ChildCount => _children?.Count ?? 0;
         public Vector2Int GrowChildCount => _growChildCount;
 
+        protected override bool FitsItsContent => transform.childCount > 0;
+        
         private readonly List<ChildInfo>    _children = new();
         private Vector2                     _contentSize;
         private Vector2Int                  _growChildCount;
@@ -288,8 +290,6 @@ namespace Poke.UI
             }
         }
         #endregion
-
-        protected override bool FitsItsContent => transform.childCount > 0;
 
         #region ILayoutGroup
         public override void CalculateLayoutInputHorizontal() {
