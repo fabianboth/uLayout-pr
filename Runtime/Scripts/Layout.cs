@@ -127,14 +127,17 @@ namespace Poke.UI
         public int ChildCount => _children?.Count ?? 0;
         public Vector2Int GrowChildCount => _growChildCount;
 
+        protected override bool FitsItsContent => transform.childCount > 0;
+        protected override string LogPrefix => "L";
+
         private readonly List<ChildInfo>    _children = new();
         private Vector2                     _contentSize;
         private Vector2Int                  _growChildCount;
         private int                         _ignoreCount;
         private Vector2                     _innerSize;
-        private Vector2                     _lastSize;
         private readonly List<LineInfo>     _lines = new();
         private bool                        _precalcYSize;
+        private bool                        _refreshCache;
         
         #region TypeDef
         public enum Justification
@@ -165,8 +168,6 @@ namespace Poke.UI
             public int index;
             public RectTransform rect;
             public LayoutItem li;
-            public SizingMode sizingX;
-            public SizingMode sizingY;
             public Vector2 size;
             public Margins margins;
             public bool enabled;
@@ -186,94 +187,6 @@ namespace Poke.UI
         #endregion
 
         #region Layout MonoBehavior
-        protected override void OnEnable() {
-            base.OnEnable();
-            Log("enable");
-            RefreshChildCache();
-        }
-
-        public override void Update() {
-            base.Update();
-
-            bool layoutChanged = _dirty;
-            bool needsCacheRefresh = false;
-
-            // check for changes in children
-            foreach(ChildInfo c in _children) {
-                if(!c.rect) {
-                    layoutChanged = true;
-                    needsCacheRefresh = true;
-                    continue;
-                }
-
-                // check if child index has changed
-                if(c.rect.GetSiblingIndex() != c.index) {
-                    layoutChanged = true;
-                    needsCacheRefresh = true;
-                }
-
-                // check if item was disabled this frame
-                if(c.rect.gameObject.activeInHierarchy != c.enabled) {
-                    c.enabled = c.rect.gameObject.activeInHierarchy;
-                    layoutChanged = true;
-                }
-                
-                if(!CheckIgnoreElem(c) && c.rect.rect.size != c.size) {
-                    layoutChanged = true;
-                }
-
-                if(c.li) {
-                    // check if ignore layout toggled this frame
-                    if(c.li.IgnoreLayout != c.ignoreLayout) {
-                        c.ignoreLayout = c.li.IgnoreLayout;
-                        layoutChanged = true;
-                    }
-
-                    if(c.li.Margins != c.margins) {
-                        c.margins = c.li.Margins;
-                        layoutChanged = true;
-                    }
-
-                    if(c.li.Sizing.x != c.sizingX) {
-                        c.sizingX = c.li.Sizing.x;
-                        layoutChanged = true;
-                    }
-                    
-                    if(c.li.Sizing.y != c.sizingY) {
-                        c.sizingY = c.li.Sizing.y;
-                        layoutChanged = true;
-                    }
-                }
-                else {
-                    _tracker.Add(
-                        this,
-                        c.rect,
-                        DrivenTransformProperties.AnchoredPosition | DrivenTransformProperties.Anchors
-                    );
-                }
-            }
-
-            // check if the container changed this frame
-            if(!Mathf.Approximately(_lastSize.x, _rect.rect.size.x) || !Mathf.Approximately(_lastSize.y, _rect.rect.size.y)) {
-                layoutChanged = true;
-            }
-            // check if any children were added/removed this frame
-            if(transform.childCount != _children.Count) {
-                layoutChanged = true;
-                needsCacheRefresh = true;
-            }
-
-            if(layoutChanged) {
-                SetDirty();
-                Log("marking for rebuild");
-                LayoutRebuilder.MarkLayoutForRebuild(_rect);
-                if(needsCacheRefresh)
-                    RefreshChildCache();
-            }
-
-            _lastSize = _rect.rect.size;
-        }
-        
         protected override void OnDrawGizmosSelected() {
             base.OnDrawGizmosSelected();
 
@@ -287,17 +200,30 @@ namespace Poke.UI
                 LayoutUtil.DrawDebugBox(r, _rect.position.z, Color.green);
             }
         }
+        
+        protected override void OnEnable() {
+            base.OnEnable();
+            QueueCacheRefresh();
+        }
+
+        // react if any children were added/removed, or if their order changed
+        private void OnTransformChildrenChanged() {
+            QueueCacheRefresh();
+        }
         #endregion
 
         #region ILayoutGroup
         public override void CalculateLayoutInputHorizontal() {
-            if(!_dirty) return;
+            base.CalculateLayoutInputHorizontal();
+            if(_refresh > 0) return;
             
+            if(_refreshCache) {
+                RefreshChildCache();
+                _refreshCache = false;
+            }
 #if UNITY_EDITOR
             RefreshedThisFrame.Add(this);
 #endif
-            Log("<color=white>CalculateLayoutInputHorizontal</color>");
-            
             _growChildCount.x = 0;
             _ignoreCount = 0;
             _innerSize = Vector2.zero;
@@ -305,11 +231,10 @@ namespace Poke.UI
             
             // get number of disabled/ignore children
             foreach(ChildInfo c in _children) {
+                UpdateChildInfo(c);
+                Log($"child: {c.rect.name}, size: {c.size}, margins: {c.margins}");
                 if(CheckIgnoreElem(c)) {
                     _ignoreCount++;
-                }
-                else {
-                    c.size = c.size.SetX(Mathf.Max(0, c.rect.rect.size.x * (m_ignoreChildScale ? 1 : c.rect.localScale.x)));
                 }
             }
             
@@ -324,6 +249,8 @@ namespace Poke.UI
                     if(CheckIgnoreElem(c))
                         continue;
 
+                    c.size.x = c.rect.rect.size.x * (m_ignoreChildScale ? 1 : c.rect.localScale.x);
+                    
                     bool grow = false;
                     if(c.li) {
                         grow = c.li.Sizing.x == SizingMode.Grow;
@@ -366,11 +293,15 @@ namespace Poke.UI
                 _contentSize = Vector2.zero;
             }
             
+            Log($"calculated content x size: {_contentSize.x:f3}");
+            
             // apply fit sizing X
             if(m_sizing.x == SizingMode.FitContent) {
                 float size = _contentSize.x + m_padding.left + m_padding.right;
                 if(m_useMaxWidth) size = Mathf.Min(m_maxWidth, size);
                 if(m_useMinWidth) size = Mathf.Max(m_minWidth, size);
+                
+                Log($"fitting horizontally ({size})");
                 
                 _rect.SetSizeWithCurrentAnchors(
                     RectTransform.Axis.Horizontal,
@@ -387,17 +318,10 @@ namespace Poke.UI
         }
 
         public override void CalculateLayoutInputVertical() {
-            if(!_dirty) return;
-            
-            Log("<color=white>CalculateLayoutInputVertical</color>");
+            base.CalculateLayoutInputVertical();
+            if(_refresh-1 > 0) return;
             
             _growChildCount.y = 0;
-
-            foreach(ChildInfo c in _children) {
-                if(!CheckIgnoreElem(c)) {
-                    c.size = c.size.SetY(Mathf.Max(0, c.rect.rect.size.y * (m_ignoreChildScale ? 1 : c.rect.localScale.y)));
-                }
-            }
             
             if(_children.Count > 0 && !_precalcYSize) {
                 float primarySize = m_justifyContent == Justification.SpaceBetween ? 0 : m_innerSpacing * (_children.Count - _ignoreCount - 1);
@@ -410,6 +334,8 @@ namespace Poke.UI
                     if(CheckIgnoreElem(c))
                         continue;
 
+                    c.size.y = c.rect.rect.size.y * (m_ignoreChildScale ? 1 : c.rect.localScale.y);
+                    
                     bool grow = false;
                     if(c.li) {
                         grow = c.li.Sizing.y == SizingMode.Grow;
@@ -424,6 +350,7 @@ namespace Poke.UI
                     {
                         case LayoutDirection.Row:
                         case LayoutDirection.RowReverse:
+                            Log($"child y size: {c.size.y}");
                             maxCrossSize = Mathf.Max(maxCrossSize, grow ? 0 : c.size.y + margins);
                             break;
                         case LayoutDirection.Column:
@@ -447,10 +374,14 @@ namespace Poke.UI
                         break;
                 }
                 
-                Log($"calculated rect y size: {_rect.rect.size.y:f3}");
+                Log($"calculated content y size: {_contentSize.y:f3}");
             }
             else if(!_precalcYSize) {
                 _contentSize = Vector2.zero;
+            }
+
+            if(_precalcYSize) {
+                Log("skipping vertical measurements - precalculated during line packing");
             }
 
             // apply fit sizing Y
@@ -458,6 +389,8 @@ namespace Poke.UI
                 float size = _contentSize.y + m_padding.top + m_padding.bottom;
                 if(m_useMaxHeight) size = Mathf.Min(m_maxHeight, size);
                 if(m_useMinHeight) size = Mathf.Max(m_minHeight, size);
+                
+                Log($"fitting vertically ({size})");
                 
                 _rect.SetSizeWithCurrentAnchors(
                     RectTransform.Axis.Vertical,
@@ -474,9 +407,8 @@ namespace Poke.UI
         }
 
         public void SetLayoutHorizontal() {
-            if(!_dirty) return;
-            
-            Log("<color=white>SetLayoutHorizontal</color>");
+            if(_refresh > 0) return;
+            Log("<color=green>SetLayoutHorizontal</color>");
             
             if(m_wrap && _lines.Count > 0) {
                 if(IsRowDirection()) {
@@ -494,9 +426,8 @@ namespace Poke.UI
         }
 
         public void SetLayoutVertical() {
-            if(!_dirty) return;
-            
-            Log("<color=white>SetLayoutVertical</color>");
+            if(_refresh-1 > 0) return;
+            Log("<color=green>SetLayoutVertical</color>");
             
             if(m_wrap && _lines.Count > 0) {
                 GrowChildrenVerticalWrapped(_contentSize.y);
@@ -527,17 +458,57 @@ namespace Poke.UI
             }
 
             OnLayoutChanged?.Invoke();
-            _dirty = false;
         }
         #endregion
 
         #region Layout Helpers
-        private void Log(object msg) {
-            if(m_log) Debug.Log($"[{_frame}] [L:{gameObject.name}]: {msg}");
-        }
-        
         private bool CheckIgnoreElem(ChildInfo ci) {
             return ci.rect == null || !ci.enabled || ci.ignoreLayout;
+        }
+
+        private void UpdateChildInfo(ChildInfo c) {
+            c.enabled = c.rect.gameObject.activeSelf;
+            c.ignoreLayout = c.li && c.li.IgnoreLayout;
+            c.margins = c.li ? c.li.Margins : default;
+            c.size = c.rect.rect.size;
+            c.size.x *= m_ignoreChildScale ? 1 : c.rect.localScale.x;
+            c.size.y *= m_ignoreChildScale ? 1 : c.rect.localScale.y;
+        }
+        
+        private void RefreshChildCache() {
+            _children.Clear();
+            _lines.Clear();
+
+            int childCount = transform.childCount;
+            Log($"Refreshing child cache - {childCount} children detected");
+
+            for(int i = 0; i < childCount; i++) {
+                RectTransform rt = transform.GetChild(i).GetComponent<RectTransform>();
+                if (rt == null) continue;
+                
+                LayoutItem li = rt.GetComponent<LayoutItem>();
+                // Log($"Adding child \"{rt.name}\" - size: {rt.rect.size}, layoutitem: {li != null}");
+
+                ChildInfo c = new ChildInfo {
+                    index = i,
+                    rect = rt,
+                    li = li,
+                    margins = li ? li.Margins : default,
+                    size = rt.rect.size * (m_ignoreChildScale ? Vector2.one : rt.localScale),
+                    enabled = rt.gameObject.activeSelf,
+                    ignoreLayout = li && li.IgnoreLayout,
+                };
+
+                if(!c.li) {
+                    _tracker.Add(
+                        this,
+                        c.rect,
+                        DrivenTransformProperties.AnchoredPosition | DrivenTransformProperties.Anchors
+                    );
+                }
+                
+                _children.Add(c);
+            }
         }
 
         private bool IsRowDirection() {
@@ -1322,6 +1293,7 @@ namespace Poke.UI
                 total += l.crossSize + (index == _lines.Count - 1 ? 0 : m_lineSpacing);
                 index++;
             }
+            Log($"total line height: {total}");
             _contentSize.y = total;
             _precalcYSize = true;
             
@@ -1516,7 +1488,7 @@ namespace Poke.UI
                             continue;
 
                         ChildInfo c = _children[line.firstItemIdx];
-                        if(CheckIgnoreElem(c) || c.sizingX != SizingMode.Grow)
+                        if(!c.li || CheckIgnoreElem(c) || c.li.Sizing.x != SizingMode.Grow)
                             continue;
 
                         flexTotal += c.li.flexibleWidth;
@@ -1548,7 +1520,7 @@ namespace Poke.UI
                         }
                         else {
                             ChildInfo c = _children[line.firstItemIdx];
-                            if(CheckIgnoreElem(c) || c.sizingX != SizingMode.Grow)
+                            if(!c.li || CheckIgnoreElem(c) || c.li.Sizing.x != SizingMode.Grow)
                                 continue;
 
                             float size = leftover * (c.li.flexibleWidth / flexTotal) - c.margins.left - c.margins.right;
@@ -1589,7 +1561,7 @@ namespace Poke.UI
                             continue;
 
                         ChildInfo c = _children[line.firstItemIdx];
-                        if(CheckIgnoreElem(c) || c.sizingY != SizingMode.Grow)
+                        if(!c.li || CheckIgnoreElem(c) || c.li.Sizing.y != SizingMode.Grow)
                             continue;
 
                         flexTotal += c.li.flexibleHeight;
@@ -1621,7 +1593,7 @@ namespace Poke.UI
                         }
                         else {
                             ChildInfo c = _children[line.firstItemIdx];
-                            if(CheckIgnoreElem(c) || c.sizingY != SizingMode.Grow)
+                            if(!c.li || CheckIgnoreElem(c) || c.li.Sizing.y != SizingMode.Grow)
                                 continue;
 
                             size = leftover * (c.li.flexibleHeight / flexTotal) - c.margins.top - c.margins.bottom;
@@ -1720,44 +1692,16 @@ namespace Poke.UI
             if(_parent)
                 _parent.GrowSizingXCallback(yDiff);
 
-            if(!_dirty && sizeChanged) {
+            if(sizeChanged) {
                 Log("forcing vertical layout update from x grow callback");
                 GrowChildrenVertical();
                 VerticalLayout(0, _children.Count-1, _contentSize.y, _contentSize.y, _ignoreCount);
             }
         }
-
-        public void RefreshChildCache() {
-            _children.Clear();
-            _lines.Clear();
-
-            int childCount = transform.childCount;
-            Log($"Refreshing child cache - {childCount} children detected");
-
-            for(int i = 0; i < childCount; i++) {
-                RectTransform rt = transform.GetChild(i).GetComponent<RectTransform>();
-                if (rt == null) continue;
-                
-                LayoutItem li = rt.GetComponent<LayoutItem>();
-                
-                Log($"Adding child \"{rt.name}\" - size: {rt.rect.size}, layoutitem: {li != null}");
-                
-                _children.Add(
-                    new ChildInfo
-                    {
-                        index = i,
-                        rect = rt,
-                        li = li,
-                        margins = li ? li.Margins : default,
-                        size = rt.rect.size * (m_ignoreChildScale ? Vector2.one : rt.localScale),
-                        enabled = rt.gameObject.activeInHierarchy,
-                        ignoreLayout = li && li.IgnoreLayout,
-                    }
-                );
-            }
-
-			SetDirty();
-            LayoutRebuilder.MarkLayoutForRebuild(_rect);
+        
+        public void QueueCacheRefresh() {
+            _refreshCache = true;
+            SetDirty();
         }
     }
 }

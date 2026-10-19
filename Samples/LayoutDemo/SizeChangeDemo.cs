@@ -11,6 +11,8 @@
     The above copyright notice and this permission notice shall be included in all
     copies or substantial portions of the Software.
 */
+
+using System;
 using TMPro;
 using UnityEngine;
 
@@ -23,7 +25,11 @@ namespace Poke.UI
         [SerializeField] private TMP_Text m_text2;
         [SerializeField] private float m_minSize = 12;
         [SerializeField] private float m_maxSize = 48;
-        
+
+        private void OnGUI() {
+            GUI.Label(new Rect(0, 0, 200, 40), $"{(1 / Time.deltaTime):f1}fps / {(Time.deltaTime*1000):f2}ms");
+        }
+
         private void Update() {
             #if UNITY_EDITOR
             if(m_logLayoutRefeshes) Debug.Log($"<color=white>{Layout.RefreshedThisFrame.Count} layouts refreshed</color>");

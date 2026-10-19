@@ -1,4 +1,22 @@
-﻿## [1.7.2] - 2026-09-25
+﻿## [1.8.0] - 2026-10-18
+
+### Added
+- Added a basic fps/frametime display on the demo scene
+
+### Fixed
+- @fabianboth - Fixed `LayoutItem` setting driven `RectTransform` properties incorrectly in specific cases
+
+### Changed
+- `LayoutItem`, `Layout` and `LayoutText` are now fully event-driven, and no longer poll for changes in properties, children, text contents, etc. This means there is zero runtime cost when nothing in the layout is changing :D
+  - shoutout to @fabianboth for getting things started
+- `LayoutText` now inherits from `UnityEngine.UI.ILayoutSelfController` as a workaround for receiving layout events even when there is no `Layout` parent
+- `LayoutItem` now inherits from `UnityEngine.UI.ILayoutIgnorer` for posterity
+- Disabled logging in release builds
+
+### Removed
+- Removed the 'Refresh Child Cache' button from the `Layout` custom inspector, as it is (theoretically) no longer needed &mdash; every enable/disable of a `LayoutItem` queues a cache refresh in a parent `Layout`
+
+## [1.7.2] - 2026-09-25
 
 ### Fixed
 - Added `ILayoutElement` max width/height properties in Unity 6.6+ - shoutout @IbrahimOezhan

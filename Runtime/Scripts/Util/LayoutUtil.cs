@@ -75,6 +75,10 @@ namespace Poke.UI
         public override int GetHashCode() {
             return HashCode.Combine(top, bottom, left, right);
         }
+
+        public override string ToString() {
+            return $"({top}, {bottom}, {left}, {right})";
+        }
     }
     
     public enum SizingMode

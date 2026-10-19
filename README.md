@@ -2,7 +2,7 @@
 
 **uLayout** is simple UI layout system designed as a drop-in replacement for Unity's `VerticalLayoutGroup` and `HorizontalLayoutGroup`, implementing a core subset of the *flexbox* spec from CSS. The system operates purely on `RectTransform`s, meaning full compatibility with native uGUI components like `Image`, `RectMask2D`, etc.
 
-It's designed with performance in mind&mdash;the system only triggers an update when resize events occur, and only the `Layout` objects which had a child resize are updated. The demo scene costs ~1.5ms in a standalone build on my machine (i9-9900k), most of which is TMP_Text updates.
+It's designed with performance in mind&mdash;the system only triggers an update when resize events occur, and only the `Layout` objects which had a child resize are updated. The demo scene costs ~0.9ms in a standalone build on my machine (Core Ultra 7 265KF), most of which is TMP_Text updates.
 
 ---
 
@@ -34,7 +34,7 @@ uLayout also supports TextMeshPro `TMP_Text` objects, using the `LayoutText` com
 ---
 
 ## Components
-### LayoutItem (&larr; `UnityEngine.UI.ILayoutElement`)
+### LayoutItem (&larr; `UnityEngine.UI.ILayoutElement`, `UnityEngine.UI.ILayoutIgnorer`)
 - **Ignore Layout** (`bool`): Whether to exclude this element from layout positioning
 - **Size Mode**: Sets the rect sizing mode for each axis. "**FitContent**" only affects derived classes (`Layout` and `LayoutText`)
   - **x** (`SizingMode`)
@@ -73,9 +73,12 @@ uLayout also supports TextMeshPro `TMP_Text` objects, using the `LayoutText` com
   - `Alignment.Center`: Align children to the cross-axis center within their respective lines
   - `Alignment.End`: Align children to the cross-axis end within their respective lines
 
-### LayoutText (&larr; `LayoutItem`)
+### LayoutText (&larr; `LayoutItem`, `UnityEngine.UI.ILayoutSelfController`)
 
 ---
 
 ## Contributing
-Contributions are welcome and greatly appreciated! Open a pull request and I'll do my best to review it in a timely manner. For contributors: **Please do not go through and alter existing code style and/or syntax.** This makes it needlessly difficult to parse your changes, and I will simply end up changing it back anyway!
+Contributions are welcome and greatly appreciated! Open a pull request and I'll do my best to review it in a timely manner.\
+For contributors:
+- **Please do not go through and alter existing code style and/or syntax.** This makes it needlessly difficult to parse your changes, and I will simply end up changing it back anyway.
+- Please do not submit pull requests with AI-generated code. If I suspect that you are using AI and/or don't understand the code you're submitting, I will not take your request seriously.

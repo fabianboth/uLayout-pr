@@ -13,15 +13,17 @@
 */
 using System;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace Poke.UI
 {
     [
         ExecuteAlways,
+        DisallowMultipleComponent,
         RequireComponent(typeof(RectTransform))
     ]
-    public class LayoutItem : MonoBehaviour, ILayoutElement
+    public class LayoutItem : UIBehaviour, ILayoutElement, ILayoutIgnorer
     {
         [SerializeField] protected bool             m_log;
         [SerializeField] protected bool             m_ignoreLayout = false;
@@ -46,10 +48,12 @@ namespace Poke.UI
 #endif
         public float flexibleWidth => m_flexWidth; // relative "weight" of this item in the horizontal layout
         public float flexibleHeight => m_flexHeight; // relative "weight" of this item in the vertical layout
+        [Obsolete("Included for compatibility with built-in layout components. Use LayoutItem.IgnoreLayout instead.")]
+        public bool ignoreLayout => m_ignoreLayout;
         public float preferredWidth => m_maxWidth;
         public float preferredHeight => m_maxHeight;
         public int layoutPriority => _layoutPriority; // useless in uLayout (bc only one UL component per object)
-
+        
         private float _preferredWidth, _preferredHeight;
         private int _layoutPriority;
         
@@ -108,17 +112,20 @@ namespace Poke.UI
         public SizeModes Sizing => m_sizing;
         #endregion
         
+        // a plain item has nothing to fit; a Layout fits its children
+        protected virtual bool FitsItsContent => false;
+        protected virtual string LogPrefix => "LI";
+        
         protected RectTransform _rect;
         protected DrivenRectTransformTracker _tracker;
-        protected DrivenTransformProperties _trackerProps;
         protected Layout _parent;
-        protected bool _dirty = true;
-        protected int _frame;
         protected readonly Vector3[] _rectCorners = new Vector3[4];
 
+        private Canvas _canvas;
         private RectTransform _parentRect;
         private Vector2 _parentSize;
-        private Canvas _canvas;
+        private DrivenTransformProperties _trackerProps;
+        protected int _refresh;
 
 		private Canvas Canvas => _canvas ? _canvas : _canvas = GetComponentInParent<Canvas>();
 
@@ -134,54 +141,6 @@ namespace Poke.UI
         }
 
         #region LayoutItem MonoBehavior
-        protected virtual void Awake() {
-            _rect = GetComponent<RectTransform>();
-            _canvas = GetComponentInParent<Canvas>();
-            _tracker = new DrivenRectTransformTracker();
-
-            _parentSize = _parentRect ? _parentRect.rect.size : default;
-        }
-
-        protected virtual void OnEnable() {
-            if(transform.parent) {
-                _parentRect = transform.parent.GetComponent<RectTransform>();
-                _parent = transform.parent.GetComponent<Layout>();
-            }
-            else { Debug.LogError("LayoutItem must be a child of a RectTransform!"); }
-            
-            _trackerProps = DrivenTransformProperties.None;
-            
-			_dirty = true;
-			if(_parent) _parent.RefreshChildCache();
-        }
-
-        public virtual void Update() {
-            //Log("update");
-            _frame = Time.frameCount;
-
-#if UNITY_EDITOR
-            _tracker.Clear();
-            _trackerProps = DrivenTransformProperties.None;
-
-            SetDrivenProperties();
-
-            _tracker.Add(this, _rect, _trackerProps);
-#endif
-
-            // Do grow sizing here if parent is not a Layout
-            if(!_parent && _parentRect) {
-                // only update size if parent size has changed
-                if(m_sizing.x == SizingMode.Grow && !Mathf.Approximately(_parentRect.rect.size.x, _parentSize.x)) {
-                    _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, _parentRect.rect.size.x);
-                    _parentSize = _parentSize.SetX(_parentRect.rect.size.x);
-                }
-                if(m_sizing.y == SizingMode.Grow && !Mathf.Approximately(_parentRect.rect.size.y, _parentSize.y)) {
-                    _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, _parentRect.rect.size.y);
-                    _parentSize = _parentSize.SetY(_parentRect.rect.size.y);
-                }
-            }
-        }
-        
         protected virtual void OnDrawGizmosSelected() {
             _rect.GetWorldCorners(_rectCorners);
 
@@ -200,35 +159,123 @@ namespace Poke.UI
                 LayoutUtil.DrawDebugBox(r, _rect.position.z, Color.orange);
             }
         }
-        #endregion
+        
+        protected override void Awake() {
+            _rect = GetComponent<RectTransform>();
+            _canvas = GetComponentInParent<Canvas>();
+            _tracker = new DrivenRectTransformTracker();
+        }
 
-        private void Log(object msg) {
-            if(m_log) Debug.Log($"[{_frame}] [LI:{gameObject.name}]: {msg}");
+        protected override void OnEnable() {
+            Log("<color=cyan>enable</color>");
+            Canvas.preWillRenderCanvases += PreLayout;
+            
+            if(transform.parent) {
+                _parentRect = transform.parent.GetComponent<RectTransform>();
+                _parent = transform.parent.GetComponent<Layout>();
+            }
+            _parentSize = _parentRect ? _parentRect.rect.size : default;
+            
+            if(!_parentRect) Debug.LogError("LayoutItem must be a child of a RectTransform!");
+            
+            if(_parent) _parent.QueueCacheRefresh();
+            if(!m_ignoreLayout) SetDirty();
+        }
+
+        protected override void OnDisable() {
+            Canvas.preWillRenderCanvases -= PreLayout;
+            if(_parent) _parent.QueueCacheRefresh();
+        }
+
+        protected void PreLayout() {
+            _refresh = 0;
+        }
+
+#if UNITY_EDITOR
+        // react to inspector value changes
+        protected override void OnValidate() {
+            if(!m_ignoreLayout && isActiveAndEnabled) {
+                Log("<color=cyan>inspector values changes</color>");
+                SetDirty();
+            }
+        }
+#endif
+        
+        // react to animated value changes
+        protected override void OnDidApplyAnimationProperties() {
+            if(!m_ignoreLayout) {
+                Log("<color=cyan>animation properties applied</color>");
+                SetDirty();
+            }
+        }
+
+        // react if rect changes size (excluding during a layout rebuild)
+        protected override void OnRectTransformDimensionsChange() {
+            if(!m_ignoreLayout && !CanvasUpdateRegistry.IsRebuildingLayout()) {
+                Log("<color=cyan>rect size changed</color>");
+                SetDirty();
+            }
+        }
+        #endregion
+        
+        protected void Log(object msg) {
+            if(Debug.isDebugBuild && m_log) Debug.Log($"[{Time.frameCount}] [{LogPrefix}:{gameObject.name}]: {msg}");
         }
         
-        protected virtual void SetDrivenProperties() {
-            if((m_sizing.x == SizingMode.FitContent && transform.childCount > 0) || m_sizing.x == SizingMode.Grow)
+        protected void SetDrivenProperties() {
+            Log("set driven RectTransform properties");
+            _tracker.Clear();
+            _trackerProps = DrivenTransformProperties.None;
+            
+            if((m_sizing.x == SizingMode.FitContent && FitsItsContent) || m_sizing.x == SizingMode.Grow)
                 _trackerProps |= DrivenTransformProperties.SizeDeltaX;
-            if((m_sizing.y == SizingMode.FitContent && transform.childCount > 0) || m_sizing.y == SizingMode.Grow)
+            if((m_sizing.y == SizingMode.FitContent && FitsItsContent) || m_sizing.y == SizingMode.Grow)
                 _trackerProps |= DrivenTransformProperties.SizeDeltaY;
 
             if(_parent && !m_ignoreLayout) 
                 _trackerProps |= DrivenTransformProperties.AnchoredPosition | DrivenTransformProperties.Anchors;
+            
+            _tracker.Add(this, _rect, _trackerProps);
         }
 
-        public virtual void SetDirty() {
-            _dirty = true;
-            if(_parent) {
-                _parent.SetDirty();
+        #region ILayoutElement
+        public virtual void CalculateLayoutInputHorizontal() {
+            if(_refresh > 0) return;
+            
+            Log("<color=green>CalculateLayoutInputHorizontal</color>");
+#if UNITY_EDITOR
+            SetDrivenProperties();
+#endif
+            // Do grow sizing here if parent is not a Layout
+            if(!_parent && _parentRect) {
+                // only update size if parent size has changed
+                if(m_sizing.x == SizingMode.Grow && !Mathf.Approximately(_parentRect.rect.size.x, _parentSize.x)) {
+                    _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, _parentRect.rect.size.x);
+                    _parentSize = _parentSize.SetX(_parentRect.rect.size.x);
+                }
             }
         }
 
-        public virtual void CalculateLayoutInputHorizontal() {
-            Log("<color=white>CalculateLayoutInputHorizontal</color>");
-        }
-
         public virtual void CalculateLayoutInputVertical() {
-            Log("<color=white>CalculateLayoutInputVertical</color>");
+            if(_refresh > 0) return;
+            
+            Log("<color=green>CalculateLayoutInputVertical</color>");
+            // Do grow sizing here if parent is not a Layout
+            if(!_parent && _parentRect) {
+                // only update size if parent size has changed
+                if(m_sizing.y == SizingMode.Grow && !Mathf.Approximately(_parentRect.rect.size.y, _parentSize.y)) {
+                    _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, _parentRect.rect.size.y);
+                    _parentSize = _parentSize.SetY(_parentRect.rect.size.y);
+                }
+            }
+
+            _refresh++;
+        }
+        #endregion
+        
+        public virtual void SetDirty() {
+            if(!CanvasUpdateRegistry.IsRebuildingLayout())
+                LayoutRebuilder.MarkLayoutForRebuild(_rect);
         }
     }
 }
