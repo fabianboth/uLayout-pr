@@ -102,12 +102,6 @@ namespace Poke.UI
                 Layout l = obj.targetObject as Layout;
                 info.text = $"Tracking {l.ChildCount} layout elements.\nHorizontal Grow: {l.GrowChildCount.x}, Vertical Grow: {l.GrowChildCount.y}";
             });
-
-            Button refresh = root.Q<Button>("RefreshCacheButton");
-            refresh.clicked += () => {
-                _layout.RefreshChildCache();
-                EditorApplication.QueuePlayerLoopUpdate();
-            };
             
             return root;
         }
