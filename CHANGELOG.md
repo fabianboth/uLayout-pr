@@ -1,4 +1,12 @@
-﻿## [1.8.0] - 2026-10-18
+﻿## [1.8.1] - 2026-10-22
+
+### Added
+- Added a public setter for `LayoutItem.Sizing`
+
+### Fixed
+- Fixed grow sizing logic when parent is not a `Layout`
+
+## [1.8.0] - 2026-10-18
 
 ### Added
 - Added a basic fps/frametime display on the demo scene

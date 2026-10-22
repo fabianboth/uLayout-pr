@@ -74,7 +74,13 @@ namespace Poke.UI
                 SetDirty();
             }
         }
-
+        public SizeModes Sizing {
+            get => m_sizing;
+            set {
+                m_sizing = value;
+                SetDirty();
+            }
+        }
         public bool UseMinWidth {
             get => m_useMinWidth;
             set {
@@ -82,7 +88,6 @@ namespace Poke.UI
                 SetDirty();
             }
         }
-
         public bool UseMinHeight {
             get => m_useMinHeight;
             set {
@@ -90,7 +95,6 @@ namespace Poke.UI
                 SetDirty();
             }
         }
-        
         public bool UseMaxWidth {
             get => m_useMaxWidth;
             set {
@@ -98,7 +102,6 @@ namespace Poke.UI
                 SetDirty();
             }
         }
-        
         public bool UseMaxHeight {
             get => m_useMaxHeight;
             set {
@@ -106,10 +109,8 @@ namespace Poke.UI
                 SetDirty();
             }
         }
-        
         public RectTransform Rect => _rect;
         public DrivenTransformProperties TrackerProps => _trackerProps;
-        public SizeModes Sizing => m_sizing;
         #endregion
         
         // a plain item has nothing to fit; a Layout fits its children
@@ -123,7 +124,6 @@ namespace Poke.UI
 
         private Canvas _canvas;
         private RectTransform _parentRect;
-        private Vector2 _parentSize;
         private DrivenTransformProperties _trackerProps;
         protected int _refresh;
 
@@ -174,8 +174,6 @@ namespace Poke.UI
                 _parentRect = transform.parent.GetComponent<RectTransform>();
                 _parent = transform.parent.GetComponent<Layout>();
             }
-            _parentSize = _parentRect ? _parentRect.rect.size : default;
-            
             if(!_parentRect) Debug.LogError("LayoutItem must be a child of a RectTransform!");
             
             if(_parent) _parent.QueueCacheRefresh();
@@ -234,6 +232,11 @@ namespace Poke.UI
 
             if(_parent && !m_ignoreLayout) 
                 _trackerProps |= DrivenTransformProperties.AnchoredPosition | DrivenTransformProperties.Anchors;
+
+            if(!_parent && m_sizing.x == SizingMode.Grow)
+                _trackerProps |= DrivenTransformProperties.AnchorMinX | DrivenTransformProperties.AnchorMaxX | DrivenTransformProperties.AnchoredPositionX;
+            if(!_parent && m_sizing.y == SizingMode.Grow)
+                _trackerProps |= DrivenTransformProperties.AnchorMinY | DrivenTransformProperties.AnchorMaxY | DrivenTransformProperties.AnchoredPositionY;
             
             _tracker.Add(this, _rect, _trackerProps);
         }
@@ -247,12 +250,13 @@ namespace Poke.UI
             SetDrivenProperties();
 #endif
             // Do grow sizing here if parent is not a Layout
-            if(!_parent && _parentRect) {
-                // only update size if parent size has changed
-                if(m_sizing.x == SizingMode.Grow && !Mathf.Approximately(_parentRect.rect.size.x, _parentSize.x)) {
-                    _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, _parentRect.rect.size.x);
-                    _parentSize = _parentSize.SetX(_parentRect.rect.size.x);
-                }
+            if(!_parent && _parentRect && m_sizing.x == SizingMode.Grow) {
+                Log("grow horizontal (non-layout)");
+                float parentSize = _parentRect.rect.size.x;
+                _rect.anchorMin = _rect.anchorMin.SetX(0.5f);
+                _rect.anchorMax = _rect.anchorMax.SetX(0.5f);
+                _rect.anchoredPosition = _rect.anchoredPosition.SetX(Mathf.LerpUnclamped(-parentSize/2, parentSize/2, _rect.pivot.x));
+                _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, _parentRect.rect.size.x);
             }
         }
 
@@ -261,12 +265,13 @@ namespace Poke.UI
             
             Log("<color=green>CalculateLayoutInputVertical</color>");
             // Do grow sizing here if parent is not a Layout
-            if(!_parent && _parentRect) {
-                // only update size if parent size has changed
-                if(m_sizing.y == SizingMode.Grow && !Mathf.Approximately(_parentRect.rect.size.y, _parentSize.y)) {
-                    _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, _parentRect.rect.size.y);
-                    _parentSize = _parentSize.SetY(_parentRect.rect.size.y);
-                }
+            if(!_parent && _parentRect && m_sizing.y == SizingMode.Grow) {
+                Log("grow vertical (non-layout)");
+                float parentSize = _parentRect.rect.size.y;
+                _rect.anchorMin = _rect.anchorMin.SetY(0.5f);
+                _rect.anchorMax = _rect.anchorMax.SetY(0.5f);
+                _rect.anchoredPosition = _rect.anchoredPosition.SetY(Mathf.LerpUnclamped(-parentSize/2, parentSize/2, _rect.pivot.y));
+                _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, _parentRect.rect.size.y);
             }
 
             _refresh++;
