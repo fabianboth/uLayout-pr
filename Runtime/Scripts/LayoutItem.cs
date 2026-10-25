@@ -200,11 +200,11 @@ namespace Poke.UI
             }
         }
 
-        // react if rect changes size (excluding during a layout rebuild)
+        // react if rect changes size (excluding during a layout rebuild); only a rebuild, since stretching over the parent resizes the rect itself
         protected override void OnRectTransformDimensionsChange() {
             if(!m_ignoreLayout && !CanvasUpdateRegistry.IsRebuildingLayout()) {
                 Log("<color=cyan>rect size changed</color>");
-                SetDirty();
+                MarkForRebuild();
             }
         }
         #endregion
@@ -240,34 +240,47 @@ namespace Poke.UI
 #if UNITY_EDITOR
             SetDrivenProperties();
 #endif
-            // Do grow sizing here if parent is not a Layout
-            if(!_parent && _parentRect && m_sizing.x == SizingMode.Grow) {
-                Log("grow horizontal (non-layout)");
-                float parentSize = _parentRect.rect.size.x;
-                _rect.anchorMin = _rect.anchorMin.SetX(0.5f);
-                _rect.anchorMax = _rect.anchorMax.SetX(0.5f);
-                _rect.anchoredPosition = _rect.anchoredPosition.SetX(Mathf.LerpUnclamped(-parentSize/2, parentSize/2, _rect.pivot.x));
-                _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, _parentRect.rect.size.x);
-            }
+            ApplyGrowOutsideLayout();
         }
 
         public virtual void CalculateLayoutInputVertical() {
             Log("<color=green>CalculateLayoutInputVertical</color>");
-            // Do grow sizing here if parent is not a Layout
-            if(!_parent && _parentRect && m_sizing.y == SizingMode.Grow) {
-                Log("grow vertical (non-layout)");
-                float parentSize = _parentRect.rect.size.y;
-                _rect.anchorMin = _rect.anchorMin.SetY(0.5f);
-                _rect.anchorMax = _rect.anchorMax.SetY(0.5f);
-                _rect.anchoredPosition = _rect.anchoredPosition.SetY(Mathf.LerpUnclamped(-parentSize/2, parentSize/2, _rect.pivot.y));
-                _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, _parentRect.rect.size.y);
-            }
         }
         #endregion
         
         public virtual void SetDirty() {
+            if(isActiveAndEnabled) ApplyGrowOutsideLayout();
+            MarkForRebuild();
+        }
+
+        private void MarkForRebuild() {
             if(!CanvasUpdateRegistry.IsRebuildingLayout())
                 LayoutRebuilder.MarkLayoutForRebuild(_rect);
+        }
+
+        // outside a Layout nothing rebuilds a growing item when its parent resizes, so it fills the parent through its anchors
+        private void ApplyGrowOutsideLayout() {
+            if(_parent || !_parentRect)
+                return;
+
+            if(m_sizing.x == SizingMode.Grow) StretchOverParent(0);
+            if(m_sizing.y == SizingMode.Grow) StretchOverParent(1);
+        }
+
+        private void StretchOverParent(int axis) {
+            Vector2 anchorMin = _rect.anchorMin, anchorMax = _rect.anchorMax, offsetMin = _rect.offsetMin, offsetMax = _rect.offsetMax;
+            if(anchorMin[axis] == 0 && anchorMax[axis] == 1 && offsetMin[axis] == 0 && offsetMax[axis] == 0)
+                return;
+
+            Log("stretch over the parent");
+            anchorMin[axis] = 0;
+            anchorMax[axis] = 1;
+            offsetMin[axis] = 0;
+            offsetMax[axis] = 0;
+            _rect.anchorMin = anchorMin;
+            _rect.anchorMax = anchorMax;
+            _rect.offsetMin = offsetMin;
+            _rect.offsetMax = offsetMax;
         }
     }
 }
