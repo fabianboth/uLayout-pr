@@ -137,6 +137,7 @@ namespace Poke.UI
         private Vector2                     _innerSize;
         private readonly List<LineInfo>     _lines = new();
         private bool                        _precalcYSize;
+        private Vector2                     _unwrappedSize;
         private bool                        _refreshCache;
         
         #region TypeDef
@@ -239,7 +240,7 @@ namespace Poke.UI
             }
             
             if(_children.Count > 0) {
-                float primarySize = m_justifyContent == Justification.SpaceBetween ? 0 : m_innerSpacing * (_children.Count - _ignoreCount - 1);
+                float primarySize = m_justifyContent == Justification.SpaceBetween ? 0 : m_innerSpacing * Mathf.Max(0, _children.Count - _ignoreCount - 1);
                 float crossSize = 0;
 
                 // calculate content size
@@ -312,6 +313,8 @@ namespace Poke.UI
             _innerSize.x = _rect.rect.size.x - m_padding.left - m_padding.right;
             Log($"calculated rect x size: {_rect.rect.size.x:f3}, inner: {_innerSize.x}");
 
+            _lines.Clear();
+            _unwrappedSize.x = _contentSize.x;
             if(IsRowDirection() && m_wrap && _contentSize.x > _innerSize.x) {
                 PackLines();
             }
@@ -323,8 +326,11 @@ namespace Poke.UI
             
             _growChildCount.y = 0;
             
+            if(_precalcYSize)
+                MeasureLineHeights();
+
             if(_children.Count > 0 && !_precalcYSize) {
-                float primarySize = m_justifyContent == Justification.SpaceBetween ? 0 : m_innerSpacing * (_children.Count - _ignoreCount - 1);
+                float primarySize = m_justifyContent == Justification.SpaceBetween ? 0 : m_innerSpacing * Mathf.Max(0, _children.Count - _ignoreCount - 1);
                 float crossSize = 0;
 
                 // calculate content size
@@ -401,6 +407,7 @@ namespace Poke.UI
             _innerSize.y = _rect.rect.size.y - m_padding.top - m_padding.bottom;
             Log($"calculated rect y size: {_rect.rect.size.y:f3}, inner: {_innerSize.y}");
 
+            _unwrappedSize.y = _contentSize.y;
             if(!IsRowDirection() && m_wrap && _contentSize.y > _innerSize.y) {
                 PackColumns();
             }
@@ -409,6 +416,9 @@ namespace Poke.UI
         public void SetLayoutHorizontal() {
             if(_refresh > 0) return;
             Log("<color=green>SetLayoutHorizontal</color>");
+
+            if(IsRowDirection() && m_wrap)
+                BreakLinesAtWidth();
             
             if(m_wrap && _lines.Count > 0) {
                 if(IsRowDirection()) {
@@ -428,6 +438,9 @@ namespace Poke.UI
         public void SetLayoutVertical() {
             if(_refresh-1 > 0) return;
             Log("<color=green>SetLayoutVertical</color>");
+
+            if(!IsRowDirection() && m_wrap)
+                BreakColumnsAtHeight();
             
             if(m_wrap && _lines.Count > 0) {
                 GrowChildrenVerticalWrapped(_contentSize.y);
@@ -1175,6 +1188,62 @@ namespace Poke.UI
             }
         }
         
+        // a growing layout gets its size from its parent only after it measured itself,
+        // so it breaks its lines again at the size it was given
+        private void BreakLinesAtWidth() {
+            float inner = _rect.rect.size.x - m_padding.left - m_padding.right;
+            if(Mathf.Approximately(inner, _innerSize.x))
+                return;
+
+            _innerSize.x = inner;
+            _lines.Clear();
+            _precalcYSize = false;
+            _contentSize.x = _unwrappedSize.x;
+            if(_contentSize.x > _innerSize.x)
+                PackLines();
+        }
+
+        private void BreakColumnsAtHeight() {
+            float inner = _rect.rect.size.y - m_padding.top - m_padding.bottom;
+            if(Mathf.Approximately(inner, _innerSize.y))
+                return;
+
+            _innerSize.y = inner;
+            _lines.Clear();
+            _contentSize.y = _unwrappedSize.y;
+            if(_contentSize.y > _innerSize.y)
+                PackColumns();
+        }
+
+        // lines are broken in the horizontal pass, before the children measured their heights,
+        // so each line takes its height from its children once they have
+        private void MeasureLineHeights() {
+            for(int i = 0; i < _lines.Count; i++) {
+                LineInfo line = _lines[i];
+                line.crossSize = 0;
+                _lines[i] = line;
+            }
+
+            foreach(ChildInfo c in _children) {
+                if(CheckIgnoreElem(c))
+                    continue;
+
+                c.size.y = c.rect.rect.size.y * (m_ignoreChildScale ? 1 : c.rect.localScale.y);
+                if(c.li && c.li.Sizing.y == SizingMode.Grow)
+                    continue;
+
+                LineInfo line = _lines[c.lineIndex];
+                line.crossSize = Mathf.Max(line.crossSize, c.size.y + c.margins.top + c.margins.bottom);
+                _lines[c.lineIndex] = line;
+            }
+
+            float total = 0;
+            for(int i = 0; i < _lines.Count; i++) {
+                total += _lines[i].crossSize + (i == _lines.Count - 1 ? 0 : m_lineSpacing);
+            }
+            _contentSize.y = total;
+        }
+
         private void PackLines() {
             _lines.Clear();
 
@@ -1271,7 +1340,8 @@ namespace Poke.UI
                 }
             }
             
-            _lines.Add(line);
+            if(line.itemCount > 0)
+                _lines.Add(line);
 
             Log($"packed {_lines.Count} lines");
             int index = 0;
@@ -1406,7 +1476,8 @@ namespace Poke.UI
                 }
             }
             
-            _lines.Add(line);
+            if(line.itemCount > 0)
+                _lines.Add(line);
 
             Log($"packed {_lines.Count} columns");
             int index = 0;
