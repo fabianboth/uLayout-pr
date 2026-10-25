@@ -1045,18 +1045,6 @@ namespace Poke.UI
                         // size actually needs to change
                         if(!Mathf.Approximately(c.rect.rect.size.x, size)) {
                             c.rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, size);
-
-                            // special case for text growing
-                            if(c.li is LayoutText t) {
-                                float oldSize = c.size.y;
-                                t.HandleGrowSizingX();
-                                float diff = c.rect.rect.size.y * (m_ignoreChildScale ? 1 : c.rect.localScale.y) - oldSize;
-                                // text resized vertically bc of growth
-                                if(!Mathf.Approximately(0, diff)) {
-                                    c.size.y = oldSize + diff;
-                                    GrowSizingXCallback(diff);
-                                }
-                            }
                         }
                     }
                     break;
@@ -1081,18 +1069,6 @@ namespace Poke.UI
                         // size actually needs to change
                         if(!Mathf.Approximately(c.rect.rect.size.x, size)) {
                             c.rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, size);
-
-                            // special case for text growing
-                            if(c.li is LayoutText t) {
-                                float oldSize = c.size.y;
-                                t.HandleGrowSizingX();
-                                float diff = c.rect.rect.size.y * (m_ignoreChildScale ? 1 : c.rect.localScale.y) - oldSize;
-                                // text resized vertically bc of growth
-                                if(!Mathf.Approximately(0, diff)) {
-                                    c.size.y = oldSize + diff;
-                                    GrowSizingXCallback(diff);
-                                }
-                            }
                         }
                     }
                     break;
@@ -1636,62 +1612,6 @@ namespace Poke.UI
         }
         #endregion
 
-        public void GrowSizingXCallback(float yDiff) {
-            Log($"X Grow Callback ({yDiff})");
-            // remove grow items from calculated content size
-            foreach(ChildInfo c in _children) {
-                if(CheckIgnoreElem(c))
-                    continue;
-
-                if(c.li && c.li.Sizing.y == SizingMode.Grow) {
-                    _contentSize.y -= c.rect.rect.size.y;
-                }
-                else {
-                    c.size.y = c.rect.rect.size.y;
-                }
-            }
-
-            float oldSize = _contentSize.y;
-            float oldHeight = _rect.rect.size.y;
-
-            // recalculate content size
-            switch(m_direction)
-            {
-                case LayoutDirection.Row:
-                case LayoutDirection.RowReverse:
-                    _contentSize.y = 0;
-                    foreach(ChildInfo c in _children) {
-                        if(CheckIgnoreElem(c) || (c.li && c.li.Sizing.y == SizingMode.Grow))
-                            continue;
-
-                        _contentSize.y = Mathf.Max(_contentSize.y, c.size.y);
-                    }
-                    break;
-                case LayoutDirection.Column:
-                case LayoutDirection.ColumnReverse:
-                    _contentSize.y += yDiff;
-                    break;
-            }
-            bool sizeChanged = !Mathf.Approximately(_contentSize.y, oldSize);
-
-            if(m_sizing.y == SizingMode.FitContent && sizeChanged) {
-                _rect.SetSizeWithCurrentAnchors(
-                    RectTransform.Axis.Vertical,
-                    m_padding.top + m_padding.bottom + _contentSize.y
-                );
-            }
-
-            Log($"old content: {oldSize}, old height: {oldHeight}\nnew content: {_contentSize.y}, new height: {_rect.rect.height}");
-            
-            if(_parent)
-                _parent.GrowSizingXCallback(yDiff);
-
-            if(sizeChanged) {
-                Log("forcing vertical layout update from x grow callback");
-                GrowChildrenVertical();
-                VerticalLayout(0, _children.Count-1, _contentSize.y, _contentSize.y, _ignoreCount);
-            }
-        }
         
         public void QueueCacheRefresh() {
             _refreshCache = true;

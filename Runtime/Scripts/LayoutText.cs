@@ -52,19 +52,6 @@ namespace Poke.UI
             }
         }
 
-        public void HandleGrowSizingX() {
-            if(m_sizing.y == SizingMode.FitContent) {
-                _preferredSize = _text.GetPreferredValues();
-                _text.ForceMeshUpdate();
-                Log($"resizing y based on x growth ({_preferredSize.y})");
-                
-                float size = _preferredSize.y;
-                if(m_useMaxHeight) size = Mathf.Min(m_maxHeight, size);
-                if(m_useMinHeight) size = Mathf.Max(m_minHeight, size);
-                _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, size);
-            }
-        }
-
         public override void CalculateLayoutInputHorizontal() {
             base.CalculateLayoutInputHorizontal();
 
@@ -82,9 +69,14 @@ namespace Poke.UI
                 Log($"fit text horizontal: {size}");
                 _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, size);
             }
-            
+        }
+
+        // the height of wrapped text depends on the width, which is final only once the horizontal pass placed it
+        public override void CalculateLayoutInputVertical() {
+            base.CalculateLayoutInputVertical();
+
             if(m_sizing.y == SizingMode.FitContent) {
-                float size = _preferredSize.y;
+                float size = _text.GetPreferredValues().y;
                 if(m_useMaxHeight) size = Mathf.Min(m_maxHeight, size);
                 if(m_useMinHeight) size = Mathf.Max(m_minHeight, size);
                 Log($"fit text vertical: {size}");
