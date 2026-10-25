@@ -125,7 +125,6 @@ namespace Poke.UI
         private Canvas _canvas;
         private RectTransform _parentRect;
         private DrivenTransformProperties _trackerProps;
-        protected int _refresh;
 
 		private Canvas Canvas => _canvas ? _canvas : _canvas = GetComponentInParent<Canvas>();
 
@@ -168,7 +167,6 @@ namespace Poke.UI
 
         protected override void OnEnable() {
             Log("<color=cyan>enable</color>");
-            Canvas.preWillRenderCanvases += PreLayout;
             
             if(transform.parent) {
                 _parentRect = transform.parent.GetComponent<RectTransform>();
@@ -181,12 +179,7 @@ namespace Poke.UI
         }
 
         protected override void OnDisable() {
-            Canvas.preWillRenderCanvases -= PreLayout;
             if(_parent) _parent.QueueCacheRefresh();
-        }
-
-        protected void PreLayout() {
-            _refresh = 0;
         }
 
 #if UNITY_EDITOR
@@ -243,8 +236,6 @@ namespace Poke.UI
 
         #region ILayoutElement
         public virtual void CalculateLayoutInputHorizontal() {
-            if(_refresh > 0) return;
-            
             Log("<color=green>CalculateLayoutInputHorizontal</color>");
 #if UNITY_EDITOR
             SetDrivenProperties();
@@ -261,8 +252,6 @@ namespace Poke.UI
         }
 
         public virtual void CalculateLayoutInputVertical() {
-            if(_refresh > 0) return;
-            
             Log("<color=green>CalculateLayoutInputVertical</color>");
             // Do grow sizing here if parent is not a Layout
             if(!_parent && _parentRect && m_sizing.y == SizingMode.Grow) {
@@ -273,8 +262,6 @@ namespace Poke.UI
                 _rect.anchoredPosition = _rect.anchoredPosition.SetY(Mathf.LerpUnclamped(-parentSize/2, parentSize/2, _rect.pivot.y));
                 _rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, _parentRect.rect.size.y);
             }
-
-            _refresh++;
         }
         #endregion
         

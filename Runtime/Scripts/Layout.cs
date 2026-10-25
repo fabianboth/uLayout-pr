@@ -215,8 +215,6 @@ namespace Poke.UI
         #region ILayoutGroup
         public override void CalculateLayoutInputHorizontal() {
             base.CalculateLayoutInputHorizontal();
-            if(_refresh > 0) return;
-            
             if(_refreshCache) {
                 RefreshChildCache();
                 _refreshCache = false;
@@ -319,8 +317,6 @@ namespace Poke.UI
 
         public override void CalculateLayoutInputVertical() {
             base.CalculateLayoutInputVertical();
-            if(_refresh-1 > 0) return;
-            
             _growChildCount.y = 0;
             
             if(_children.Count > 0 && !_precalcYSize) {
@@ -407,7 +403,6 @@ namespace Poke.UI
         }
 
         public void SetLayoutHorizontal() {
-            if(_refresh > 0) return;
             Log("<color=green>SetLayoutHorizontal</color>");
             
             if(m_wrap && _lines.Count > 0) {
@@ -426,7 +421,6 @@ namespace Poke.UI
         }
 
         public void SetLayoutVertical() {
-            if(_refresh-1 > 0) return;
             Log("<color=green>SetLayoutVertical</color>");
             
             if(m_wrap && _lines.Count > 0) {
